@@ -79,7 +79,7 @@ addhandler do_cyclonedx_init
 do_cyclonedx_init[eventmask] = "bb.event.BuildStarted"
 
 python do_cyclonedx_package_collect() {
-    from oe.cve_check import decode_cve_status
+    from oe.cve_check import get_patched_cves
 
     # ignore non-target packages
     for ignored_suffix in (d.getVar("SPECIAL_PKGSUFFIX") or "").split():
@@ -102,6 +102,9 @@ python do_cyclonedx_package_collect() {
 
             for cve in (d.getVarFlags("CVE_STATUS") or {}):
                 append_to_vex_vulnerabilities(d, vex, cve, sbom_serial_number, bom_ref)
+
+            for cve in get_patched_cves(d):
+                append_to_vex_vulnerabilities(d, vex, cve, sbom_serial_number, bom_ref, True)
     
     # write it back to the deploy directory
     write_json(d.getVar("CYCLONEDX_EXPORT_SBOM"), sbom)
@@ -158,10 +161,16 @@ def generate_packages_list(products_names, version):
         packages.append(pkg)
     return packages
 
-def append_to_vex_vulnerabilities(d, vex, cve, sbom_serial_number, bom_ref):
+def append_to_vex_vulnerabilities(d, vex, cve, sbom_serial_number, bom_ref, patch_found=False):
     from oe.cve_check import decode_cve_status
 
-    decoded_status, state, justification = decode_cve_status(d, cve)
+    if patch_found:
+        decoded_status = "Patched"
+        state = "Patched"
+        justification = "Patch applied in build system"
+    else:
+        decoded_status, state, justification = decode_cve_status(d, cve)
+
     # Currently, only "Patched" and "Ignored" status are relevant to us.
     # See https://docs.yoctoproject.org/singleindex.html#term-CVE_CHECK_STATUSMAP for possible statuses.
     if decoded_status == "Patched":
